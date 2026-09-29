@@ -9,27 +9,39 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 
 
+def normalize_db_url(url: str) -> str:
+    if not url:
+        return ""
+    url = url.strip()
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
 def create_active_engine() -> Tuple[Engine, str]:
     """
     Attempts to connect to configured PostgreSQL.
     If PostgreSQL is unreachable or times out, falls back seamlessly to
     a local SQLite database (email_security.db) for frictionless development.
     """
-    if settings.DATABASE_URL.startswith("postgresql"):
+    db_url = normalize_db_url(settings.DATABASE_URL)
+    if db_url.startswith("postgresql"):
         try:
             pg_engine = create_engine(
-                settings.DATABASE_URL,
+                db_url,
                 pool_pre_ping=True,
                 pool_size=10,
                 max_overflow=20,
-                connect_args={"connect_timeout": 2},
+                connect_args={"connect_timeout": 5},
             )
             with pg_engine.connect():
                 logger.info("[✓] Successfully connected to PostgreSQL.")
                 return pg_engine, "postgresql"
         except Exception as e:
             logger.warning(
-                f"[!] PostgreSQL unreachable at {settings.DATABASE_URL} ({e}). "
+                f"[!] PostgreSQL unreachable at {db_url} ({e}). "
                 "Engaging local SQLite fallback for seamless development."
             )
 
